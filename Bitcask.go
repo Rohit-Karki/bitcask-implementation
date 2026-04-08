@@ -1,6 +1,7 @@
 package bitcask
 
 import (
+	"fmt"
 	"os"
 
 	datafile "bitcask/internal"
@@ -72,13 +73,18 @@ func NewInitBitcask() (*Bitcask, error) {
 	var active_dataFile *datafile.DataFile
 
 	stale_dataFiles := datafile.GetStaleDataFiles()
-	for _, df := range stale_dataFiles {
-		populateKeyDirFromDataFile(df)
-	}
 	active_dataFile = datafile.CreateNewDataFile()
-	keyDir := make(KeyDir, 0)
+	keyDir := make(KeyDir)
 	// fill the keyDir with the key-value pairs from the stale data files
-	// keyDir =
+	hintfiles_path := fmt.Sprintf("%s/hintfile.hint", HINTS_FILE_PATH)
+
+	if _, err := os.Stat(hintfiles_path); err == nil {
+		fmt.Println("hint files")
+		if err := keyDir.decode(hintfiles_path); err != nil {
+			fmt.Errorf("Failed to decode hint file", "path", hintfiles_path, "error", err)
+			return nil, err
+		}
+	}
 	var bitcask = &Bitcask{
 		keyDir:          keyDir,
 		activeDataFile:  active_dataFile,
@@ -88,14 +94,32 @@ func NewInitBitcask() (*Bitcask, error) {
 	return bitcask, nil
 }
 
-func populateKeyDirFromDataFile(df *datafile.DataFile) {
-
+func (bc *Bitcask) generateHintFiles() error {
+	// Generate Hint files from the keydir
+	hintDir := HINTS_FILE_PATH
+	hintFilePath := fmt.Sprintf("%s/hintfile.hint", hintDir)
+	fmt.Printf("Generating hint file: %s\n", hintFilePath)
+	// create directory if it doesn't exist
+	if _, err := os.Stat(hintDir); os.IsNotExist(err) {
+		os.Mkdir(hintDir, 0755)
+	}
+	// Generate the hint files based on the keyDir entries
+	if err := bc.keyDir.encode(hintFilePath); err != nil {
+		fmt.Println("Error generating hint files:", err)
+		return err
+	}
+	return nil
 }
 
 func (bc *Bitcask) Close() {
+	fmt.Println("Closing")
+	// Generate Hint files from the keydir
+	bc.generateHintFiles()
+
 	// Close the active data file and all stale data files
 	bc.activeDataFile.Close()
 	for _, df := range bc.stale_DataFiles {
 		df.Close()
 	}
+
 }
